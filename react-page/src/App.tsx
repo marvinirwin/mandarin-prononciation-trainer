@@ -1,32 +1,9 @@
-import React, {Fragment} from 'react';
+import React, {useState} from 'react';
 import sampleSentences from './hsk-sample.json';
 import './App.css';
-import hsk1 from './hsk-1.json'
-import hsk2 from './hsk-2.json'
-import hsk3 from './hsk-3.json'
-import hsk4 from './hsk-4.json'
-
-
-const getRandIndex = (w: Array<any>) => Math.floor(Math.random() * w.length)
-
-interface Sample {
-    id: string;
-    file: string;
-    user_id: string;
-    text: string;
-    length: string;
-}
-
-interface HskWord {
-    id: number;
-    hanzi: string;
-    pinyin: string;
-    translations: string[]
-}
-
-interface TranslationMap {
-    [key: string]: HskWord
-}
+import {Character, PinyinQuestion, Sentence} from "./Sentence";
+import {CssBaseline, Drawer, List, ListItem, ListItemText, makeStyles, Paper} from "@material-ui/core";
+import SampleScroller from './components/Sample-Scroller'
 
 /*
 class AudioTest {
@@ -45,11 +22,18 @@ class AudioTest {
 const alphabet = 'abcefghijklmnopqrstuvwxyz'
 */
 
-const tones: Set<string> = new Set([
-    '\u0304', // tone 1
-    '\u0301', // tone 2
-    '\u030c', // tone 3
-    '\u0300', // tone 4
+
+export enum Tone {
+    One = '\u0304',
+    Two = '\u0301',
+    Three = '\u030c',
+    Four = '\u0300'
+}
+export const tones: Set<string> = new Set([
+    Tone.One,
+    Tone.Two,
+    Tone.Three,
+    Tone.Four,
 ]);
 
 // @ts-ignore
@@ -97,17 +81,7 @@ export function getPinyinTonePermutations(w: string): string[] {
     return permutes.flat();
 }
 
-export const pinyinMap: TranslationMap = [...hsk1, ...hsk2, ...hsk3, ...hsk4]
-    // @ts-ignore
-    .reduce((acc: TranslationMap, o: HskWord) => {
-            if (o.hanzi.normalize().length === 1) {
-                acc[o.hanzi] = o
-            }
-            return acc;
-        },
-        {}
-    );
-
+/*
 class TranslationObject {
     public permutations: string[];
     public word: string;
@@ -182,54 +156,152 @@ class TranslationObject {
     }
 
 }
-
-
-interface WithSentence extends Sample {
-    potentialSounds: string[];
-    correctAnswer: string;
-
-}
+*/
 
 // For each sentence find a random tone and use that
-const sentences: TranslationObject[] = [];
-sampleSentences.forEach(s => {
-    const o = new TranslationObject(s.text.split('')
-        .map(char => pinyinMap[char] ? pinyinMap[char].pinyin : char)
-        .join(''), s.file, s.id);
-    if (o.permutations.length) {
-        sentences.push(o);
+
+const sentences: Sentence[] = sampleSentences
+    .map(s => new Sentence(s))
+    .filter(s => s.words.filter(w => w.pinyin).length)
+    .sort((s1, s2) => {
+        if (s1.sample.text.length > s2.sample.text.length) {
+            return 1;
+        } else if (s1.sample.text.length < s2.sample.text.length) {
+            return -1;
+        }
+        return 0;
+    });
+
+
+const drawerWidth = 240;
+
+const useStyles = makeStyles((theme) => ({
+    root: {
+        display: 'flex',
+    },
+    appBar: {
+        width: `calc(100% - ${drawerWidth}px)`,
+        marginLeft: drawerWidth,
+    },
+    drawer: {
+        width: drawerWidth,
+        flexShrink: 0,
+    },
+    drawerPaper: {
+        width: drawerWidth,
+    },
+    // necessary for content to be below app bar
+    toolbar: theme.mixins.toolbar,
+    content: {
+        flexGrow: 1,
+        backgroundColor: theme.palette.background.default,
+        padding: theme.spacing(3),
+    },
+}));
+
+export interface PersistedData {
+    answer: string
+}
+
+interface PersistMap {
+    [key: string]: PersistedData
+}
+
+export class Persistor {
+    private data: PersistMap
+
+    constructor() {
+        this.data = JSON.parse(window.localStorage.getItem('persist') || '{}');
+    }
+
+    read(k: string): PersistedData | undefined {
+        return this.data[k];
+    }
+
+    write(k: string, v: PersistedData) {
+        this.data[k] = v;
+    }
+}
+
+export const PersistorContext = React.createContext(new Persistor());
+
+export class QuestionGroup {
+    questions: PinyinQuestion[];
+    constructor(public name: string) {
+        this.questions = [];
+    }
+    toneDisplay() {
+        const counts = this.questions.reduce((acc, question: PinyinQuestion) => {
+            if (question.word.tone) {
+                acc[question.word.tone] += 1;
+            }
+            return acc;
+        }, {[Tone.One]: 0, [Tone.Two]: 0, [Tone.Three]: 0, [Tone.Four]: 0});
+        return `(${counts[Tone.One]}) (${counts[Tone.Two]}) (${counts[Tone.Three]}) (${counts[Tone.Four]})`;
+    }
+}
+
+const unaccentedQuestionMap = new Map<string, QuestionGroup>();
+const baseQuestionGroup: QuestionGroup = new QuestionGroup('')
+const questionGroups: QuestionGroup[] = [];
+sentences.forEach(s => {
+    // Let's group by unaccented words
+    for (let i = 0; i < s.pinyinQuestions.length; i++) {
+        const pinyinQuestion = s.pinyinQuestions[i];
+        baseQuestionGroup.questions.push(pinyinQuestion);
+        const unaccented = removeTones(pinyinQuestion.word.pinyin as string);
+        const g = unaccentedQuestionMap.get(unaccented);
+        if (g) {
+            g.questions.push(pinyinQuestion)
+        } else {
+            const g = new QuestionGroup(unaccented);
+            g.questions.push(pinyinQuestion)
+            unaccentedQuestionMap.set(unaccented, g);
+            questionGroups.push(g);
+        }
     }
 });
 
-
-function App() {
-    return (
-        <div className="App">
-            {sentences.map((s) =>
-                <div key={s.sentence}>
-{/*
-                    {s.Component}
-*/}
-
-                    <div>Correct answer: {s.DisplayComponent(s.sentenceArray)}</div>
-                    <div>
-                        <audio
-                            controls
-                            src={"sound-files/" + s.file}>
-                            Your browser does not support the <code>audio</code> element.
-                        </audio>
-                    </div>
-                    <div>
-                        {s.permutationSentenceArray.map(p =>
-                            <div>
-                                {s.DisplayComponent(p)}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+function removeTones(w: string) {
+    const n = w.normalize('NFD').split('');
+    for (let i = 0; i < n.length; i++) {
+        const nElement = n[i];
+        if (tones.has(nElement)) {
+            n.splice(i, 1);
+            i--;
+        }
+    }
+    return n.join('');
 }
 
-export default App;
+function App() {
+    const classes = useStyles()
+
+    const [activeGroup, setActiveGroup] = useState(questionGroups[0]);
+    return <div className={classes.root}>
+        <CssBaseline/>
+        <Drawer
+            anchor="left"
+            variant="permanent"
+            className={classes.drawer}
+            classes={{
+                paper: classes.drawerPaper,
+            }}
+        >
+            <List>
+                {
+                    questionGroups.map((g, i) => <ListItem button onClick={() => setActiveGroup(g)} key={i}>
+                        <ListItemText primary={g.name} secondary={g.toneDisplay()}/>
+                    </ListItem>)
+                }
+            </List>
+        </Drawer>
+        <main>
+            <Paper>
+                <SampleScroller questions={activeGroup.questions}/>
+            </Paper>
+        </main>
+    </div>
+}
+
+export default App

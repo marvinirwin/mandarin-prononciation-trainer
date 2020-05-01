@@ -81,7 +81,7 @@ def save_hsk():
     for pop in characters_to_ignore:
         all_words.pop(pop, None)
 
-    target_percent = 99
+    target_percent = 55
     sample = get_subset(1000, lambda w: is_percent(w, target_percent, all_words))
     print("Found %i sentences with %i percent desired words."
           % (len(sample), target_percent))
@@ -103,7 +103,7 @@ def get_sound_files():
     base = os.path.expanduser('~/Downloads/primewords_md_2018_set1/audio_files')
     Path(sound_file_location).mkdir(parents=True, exist_ok=True)
     for sentence in sample:
-        copyfile(resolve_sound_file(base, sentence['file']), os.path.join('./sound-files', sentence['file']))
+        copyfile(resolve_sound_file(base, sentence['file']), os.path.join('./react-page/public/sound-files', sentence['file']))
 
 
 html_page = """
